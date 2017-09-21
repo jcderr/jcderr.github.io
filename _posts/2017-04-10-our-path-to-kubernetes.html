@@ -19,84 +19,84 @@ categories:
 tags: []
 comments: []
 ---
-<p>We recently pulled the switch on migrating 100% of our traffic to Kubernetes. This was a long process for us for a number of reasons, including supreme fault intolerance. Some of our customers have to make all of their revenue for the year in quite a small number of hours, and their load profile makes configuration of load balancers and failovers more than a little problematic. We had several false starts in this conversion, as a result. Today, I am going to discuss how we got from Here to There.<&#47;p></p>
-<h1>Starting Points<&#47;h1></p>
-<p>When I joined Bypass just 15 months ago, we served a fraction of the traffic we do today, had about a third of the server inventory we have today, and had none of the sophistication we have today.<&#47;p></p>
-<p>The typical application looked like this:<&#47;p></p>
+<p>We recently pulled the switch on migrating 100% of our traffic to Kubernetes. This was a long process for us for a number of reasons, including supreme fault intolerance. Some of our customers have to make all of their revenue for the year in quite a small number of hours, and their load profile makes configuration of load balancers and failovers more than a little problematic. We had several false starts in this conversion, as a result. Today, I am going to discuss how we got from Here to There.</p></p>
+<h1>Starting Points</h1></p>
+<p>When I joined Bypass just 15 months ago, we served a fraction of the traffic we do today, had about a third of the server inventory we have today, and had none of the sophistication we have today.</p></p>
+<p>The typical application looked like this:</p></p>
 <ul>
-<li>a pet EC2 instance, hand crafted from artisanal bits<&#47;li>
-<li>a Ruby on Rails project<&#47;li>
-<li>a bunch of completely custom-for-that-application Capistrano recipes<&#47;li>
-<li><a href="https:&#47;&#47;github.com&#47;zendesk&#47;samson">Samson<&#47;a> to glue it all together<&#47;li><br />
-<&#47;ul></p>
-<p>There were some bits of Capistrano that could be reused between projects. We did not do this consistently, though, so there were maybe three ways to migrate schemas across a dozen applications. Some apps had code to ensure zero-downtime deployments, while others did not.<&#47;p></p>
-<p>Worst of all, horizontal scale required one to manually provision and configure a new, artisanal EC2 instance, the shepard a PR through git to add it to the Capistrano inventory, and then deploy once done.<&#47;p></p>
-<p>We had two nascent services running on AWS EC2 Elastic Container Service, but our developers found it very challenging to troubleshoot these services due to ECS's arcane (some might say profane) user experience.<&#47;p></p>
-<h2>Our Rails Monolith<&#47;h2></p>
-<p>The biggest challenge to date has been migrating our Ruby on Rails monolith. This application is responsible for a very, very large fraction of our business logic and is integral to our business operations. I hesitate to say that it is "in" our critical path, as in many ways it <em>is<&#47;em> the critical path.<&#47;p></p>
-<p>If you have ever run a Rails application in production (or, truthfully, any app of the rails&#47;django webdev generation), it follows a pattern you will recognize: a big monolithic codebase with an incredibly messy many-to-many object model that will survive as technical debt for another decade. While we are working to "break up the monolith" into something approaching microservices, this monolith is our reality today.<&#47;p></p>
-<p>We have traditionally run it using <a href="https:&#47;&#47;www.phusionpassenger.com&#47;">Phusion Passenger<&#47;a>, backed with MySQL, and running async jobs using <a href="https:&#47;&#47;github.com&#47;mperham&#47;sidekiq">Sidekiq<&#47;a> and redis. It's a stack you have probably seen a million times by now.<&#47;p></p>
-<h1>The Goal State<&#47;h1></p>
-<p>As of this weekend, something very close to 100% of our traffic is served by projects running in Kubernetes. We have a few low-traffic endpoints on the long trail to officially retire our pet server fleet, and hope to complete that process this quarter. The most important major straggler, which we transferred over this weekend, was our main Ruby monolith.<&#47;p></p>
-<p>We aren't doing anything particularly interesting in Kubernetes. No custom schedulers, for instance. We use the base APIs, and we use them effectively. In fact, our production stack is (currently) still running Kubernetes 1.4 at the moment.<&#47;p></p>
-<p>We utilize the <code>deployment<&#47;code> API to define each service and, because we're in AWS, we use <code>LoadBalancer<&#47;code> services to hook up to the outside world. The <code>HorizontalPodAutoscaler<&#47;code> API allows us to react to traffic spikes relatively instantly. This turned out to be a big deal, and a huge win, because our 100% Rollout Weekend was not as quiet as it should be.<&#47;p></p>
-<h1>Pre-Gaming It<&#47;h1></p>
-<p>Our initial Kubernetes-based services were a small handful of non-critical services. We started with a timeclock microservice used by a subset of our customers, an integration to a specific, major partner, and a couple of internal tools.<&#47;p></p>
-<p>As we were wrapping up evaluating Kubernetes in production with these services, we had an outage to an unrelated system. The practical "upshot", as it were, was that our background Sidekiq queues got about 2 orders of magnitude over "completely out of control."<&#47;p></p>
+<li>a pet EC2 instance, hand crafted from artisanal bits</li>
+<li>a Ruby on Rails project</li>
+<li>a bunch of completely custom-for-that-application Capistrano recipes</li>
+<li><a href="https://github.com/zendesk/samson">Samson</a> to glue it all together</li><br />
+</ul></p>
+<p>There were some bits of Capistrano that could be reused between projects. We did not do this consistently, though, so there were maybe three ways to migrate schemas across a dozen applications. Some apps had code to ensure zero-downtime deployments, while others did not.</p></p>
+<p>Worst of all, horizontal scale required one to manually provision and configure a new, artisanal EC2 instance, the shepard a PR through git to add it to the Capistrano inventory, and then deploy once done.</p></p>
+<p>We had two nascent services running on AWS EC2 Elastic Container Service, but our developers found it very challenging to troubleshoot these services due to ECS's arcane (some might say profane) user experience.</p></p>
+<h2>Our Rails Monolith</h2></p>
+<p>The biggest challenge to date has been migrating our Ruby on Rails monolith. This application is responsible for a very, very large fraction of our business logic and is integral to our business operations. I hesitate to say that it is "in" our critical path, as in many ways it <em>is</em> the critical path.</p></p>
+<p>If you have ever run a Rails application in production (or, truthfully, any app of the rails/django webdev generation), it follows a pattern you will recognize: a big monolithic codebase with an incredibly messy many-to-many object model that will survive as technical debt for another decade. While we are working to "break up the monolith" into something approaching microservices, this monolith is our reality today.</p></p>
+<p>We have traditionally run it using <a href="https://www.phusionpassenger.com/">Phusion Passenger</a>, backed with MySQL, and running async jobs using <a href="https://github.com/mperham/sidekiq">Sidekiq</a> and redis. It's a stack you have probably seen a million times by now.</p></p>
+<h1>The Goal State</h1></p>
+<p>As of this weekend, something very close to 100% of our traffic is served by projects running in Kubernetes. We have a few low-traffic endpoints on the long trail to officially retire our pet server fleet, and hope to complete that process this quarter. The most important major straggler, which we transferred over this weekend, was our main Ruby monolith.</p></p>
+<p>We aren't doing anything particularly interesting in Kubernetes. No custom schedulers, for instance. We use the base APIs, and we use them effectively. In fact, our production stack is (currently) still running Kubernetes 1.4 at the moment.</p></p>
+<p>We utilize the <code>deployment</code> API to define each service and, because we're in AWS, we use <code>LoadBalancer</code> services to hook up to the outside world. The <code>HorizontalPodAutoscaler</code> API allows us to react to traffic spikes relatively instantly. This turned out to be a big deal, and a huge win, because our 100% Rollout Weekend was not as quiet as it should be.</p></p>
+<h1>Pre-Gaming It</h1></p>
+<p>Our initial Kubernetes-based services were a small handful of non-critical services. We started with a timeclock microservice used by a subset of our customers, an integration to a specific, major partner, and a couple of internal tools.</p></p>
+<p>As we were wrapping up evaluating Kubernetes in production with these services, we had an outage to an unrelated system. The practical "upshot", as it were, was that our background Sidekiq queues got about 2 orders of magnitude over "completely out of control."</p></p>
 <blockquote>
-<p>Kif Kroker: Captain, may I have a word with you?<&#47;p></p>
-<p>Captain Zapp Brannigan: No.<&#47;p></p>
-<p>Kif Kroker: It's an emergency, sir.<&#47;p></p>
-<p>Captain Zapp Brannigan: Come back when it's a catastrophe.<&#47;p></p>
-<p>[a huge rumbling is heard]<&#47;p></p>
-<p>Captain Zapp Brannigan: Oh, very well.<&#47;p><br />
-<&#47;blockquote></p>
-<p>As it happened, we had already begun testing the monolith in our integration and dev Kubernetes environments. We had it Dockerized already, though quite inelegantly. As the outage progressed, I started putting together the checklist I needed to run through to add inventory to the fleet to bring on more Sidekiq instances. If you look back up there, earlier in this very post, you'll see why I was unenthused by this prospect.<&#47;p></p>
-<p>But I had a container image, and I had a <code>podspec<&#47;code>. I could literally launch as many Sidekiq workers as needed at an instant's notice. So I made the executive decision, cross-checked all the relevant environment variables, and spun up the <code>deployment<&#47;code>.<&#47;p></p>
-<p>This was our first big - and completely unplanned - win with Kubernetes. Before this, it was still seen as a bit of a tech experiment. Afterwards, we haven't just drank the Kool-aid, we're practically swimming in it.<&#47;p></p>
-<h1>Making the Move<&#47;h1></p>
-<p>It took us about 6 months to fully make the move to Kubernetes. We had a lot of trouble predicting load and usage levels, tweaking memory and cpu limits on our deployments, generating test loads to verify, and even validating results from those tests we could do.<&#47;p></p>
-<h2>Nighthawks<&#47;h2></p>
-<p>Our first attempts to get a handle on load profiles was to have a cross-functional team work night shifts for about 3 weeks and load test the production infrastructure during off-peak hours. This coincided with our need to perform a handful of breaking infrastructure changes unrelated to the Kubernetes initiative.<&#47;p></p>
-<p><a href="https:&#47;&#47;aws.amazon.com&#47;route53&#47;">AWS Route53<&#47;a> was a real god-send here. We generated three Route53 weighted-DNS configurations:<&#47;p></p>
+<p>Kif Kroker: Captain, may I have a word with you?</p></p>
+<p>Captain Zapp Brannigan: No.</p></p>
+<p>Kif Kroker: It's an emergency, sir.</p></p>
+<p>Captain Zapp Brannigan: Come back when it's a catastrophe.</p></p>
+<p>[a huge rumbling is heard]</p></p>
+<p>Captain Zapp Brannigan: Oh, very well.</p><br />
+</blockquote></p>
+<p>As it happened, we had already begun testing the monolith in our integration and dev Kubernetes environments. We had it Dockerized already, though quite inelegantly. As the outage progressed, I started putting together the checklist I needed to run through to add inventory to the fleet to bring on more Sidekiq instances. If you look back up there, earlier in this very post, you'll see why I was unenthused by this prospect.</p></p>
+<p>But I had a container image, and I had a <code>podspec</code>. I could literally launch as many Sidekiq workers as needed at an instant's notice. So I made the executive decision, cross-checked all the relevant environment variables, and spun up the <code>deployment</code>.</p></p>
+<p>This was our first big - and completely unplanned - win with Kubernetes. Before this, it was still seen as a bit of a tech experiment. Afterwards, we haven't just drank the Kool-aid, we're practically swimming in it.</p></p>
+<h1>Making the Move</h1></p>
+<p>It took us about 6 months to fully make the move to Kubernetes. We had a lot of trouble predicting load and usage levels, tweaking memory and cpu limits on our deployments, generating test loads to verify, and even validating results from those tests we could do.</p></p>
+<h2>Nighthawks</h2></p>
+<p>Our first attempts to get a handle on load profiles was to have a cross-functional team work night shifts for about 3 weeks and load test the production infrastructure during off-peak hours. This coincided with our need to perform a handful of breaking infrastructure changes unrelated to the Kubernetes initiative.</p></p>
+<p><a href="https://aws.amazon.com/route53/">AWS Route53</a> was a real god-send here. We generated three Route53 weighted-DNS configurations:</p></p>
 <ul>
-<li>A Alias record pointing only to pet servers<&#47;li>
-<li>A Alias records pointing to a mix of pets and k8s<&#47;li>
-<li>A Alias record pointing only to k8s<&#47;li><br />
-<&#47;ul></p>
-<p>In the end, however, this specific work only helped generate the knowledge base we needed in the long run and the results were not terribly useful. We were unable to generate a truly organic load test from which we could make infrastructure decisions.<&#47;p></p>
-<h2>Testing in Production<&#47;h2></p>
-<p><img src="https:&#47;&#47;techbeacon.com&#47;sites&#47;default&#47;files&#47;most_interesting_man_test_in_production_meme.jpg" alt="mimitw" &#47;><&#47;p></p>
-<p>Weighted DNS really made a difference here as well. In fact, this whole blog post could be summed up as "Route53 Is Amazing." We had a couple of interesting pieces of information to work with.<&#47;p></p>
+<li>A Alias record pointing only to pet servers</li>
+<li>A Alias records pointing to a mix of pets and k8s</li>
+<li>A Alias record pointing only to k8s</li><br />
+</ul></p>
+<p>In the end, however, this specific work only helped generate the knowledge base we needed in the long run and the results were not terribly useful. We were unable to generate a truly organic load test from which we could make infrastructure decisions.</p></p>
+<h2>Testing in Production</h2></p>
+<p><img src="https://techbeacon.com/sites/default/files/most_interesting_man_test_in_production_meme.jpg" alt="mimitw" /></p></p>
+<p>Weighted DNS really made a difference here as well. In fact, this whole blog post could be summed up as "Route53 Is Amazing." We had a couple of interesting pieces of information to work with.</p></p>
 <ul>
-<li>We had 6 pet monolith servers<&#47;li>
+<li>We had 6 pet monolith servers</li>
 <li>We had 2 hostnames
 <ul>
-<li><code>api<&#47;code>, used by integrations and other services<&#47;li>
-<li><code>ingest<&#47;code>, used by critical flow traffic<&#47;li><br />
-<&#47;ul><&#47;li></p>
-<li>Both hostnames pointed to the same 6 servers<&#47;li><br />
-<&#47;ul></p>
-<p>This gave me a self-selecting feature break to phase in kubernetes.<&#47;p></p>
-<h3><code>api<&#47;code> switchover<&#47;h3></p>
-<p>We started with the <code>api<&#47;code> hostname, as it would be more tolerant to failure. We started with weighted DNS directing 5% of traffic to k8s, 95% to the pets.[fn1]<&#47;p></p>
-<p>After observing this configuration for a few weeks and performing additional tweaks, we elevated the mix to 75&#47;25 and got stuck here for several months. Many of our problems here were mere instrumentation rather than issues with our software or with Kubernetes.<&#47;p></p>
-<p>We solved this problem by changing the <code>NEW_RELIC_APP_NAME<&#47;code> variable for this deployment, allowing us to more readily separate out performance profiles between the pets and the k8s deployments. In fact, we wound up with the same software reporting as several different applications in <a href="https:&#47;&#47;newrelic.com&#47;">New Relic<&#47;a>. Once we did this, we were able to plainly see that performance in k8s was actually much better than we'd thought, and pulled the lever to move to 100% k8s.<&#47;p></p>
-<h3><code>ingest<&#47;code> switchover<&#47;h3></p>
-<p>Moving <code>ingest<&#47;code> endpoints over was a much more arduous affair. This is our most critical traffic, the kind of business processes where our customers start blowing up our phones when things go wrong. As a result, we were much more conservative in migrating this traffic. The work here ran in parallel to the work on <code>api<&#47;code>, just at a slower pace.<&#47;p></p>
-<p>Then something unexpected happened.<&#47;p></p>
-<p>We had been talking about retiring the <code>ingest<&#47;code> hostname for quite some time and I lost track of the status of that initiative. Shortly after we reached a 50&#47;50 mix on <code>ingest<&#47;code>, our tablet engineers shipped a version that implemented this change, and they did so in the run-up to a product launch expected to deliver significantly more traffic than we were accustomed to receiving.<&#47;p></p>
-<p>In fact, in expectation of this launch, I had placed my entire team on-call for the day. As a result, we observed this delta between expectation and reality almost instantly. The k8s horizontal pod autoscaler kicked in and drove our <code>api<&#47;code> deployment up to its upper bound almost instantly.<&#47;p></p>
-<p>We did some quick back-of-the-napkin math and wondered if we should drop <code>api<&#47;code> back to a mix with the pets, but ultimately decided to stay the course. Once the launch was over, we evaluated all available telemetry we had on the event and realized that we were safe to flip <code>ingest<&#47;code> over completely.<&#47;p></p>
-<p>We entered the weekend with the original pet servers held in reserve, with Route53 healthchecks and failover configured to redirect traffic if anything hiccups in k8s. Being in Sports and Entertainment, our highest traffic-hours are typically mid-evening on a Saturday night, and we've had a string of record breaking Saturdays recently. Data Science reported that this weekend was projected to be a little lighter than usual, so we elected to stay the course yet again.<&#47;p></p>
-<p>The 7 o'clock hour on Saturday, April 8, 2017, was not a little lighter than usual. It was our highest traffic-hour <em>ever.<&#47;em><&#47;p></p>
-<p>I posted this to Twitter the following morning before I got the full traffic results:<&#47;p></p>
+<li><code>api</code>, used by integrations and other services</li>
+<li><code>ingest</code>, used by critical flow traffic</li><br />
+</ul></li></p>
+<li>Both hostnames pointed to the same 6 servers</li><br />
+</ul></p>
+<p>This gave me a self-selecting feature break to phase in kubernetes.</p></p>
+<h3><code>api</code> switchover</h3></p>
+<p>We started with the <code>api</code> hostname, as it would be more tolerant to failure. We started with weighted DNS directing 5% of traffic to k8s, 95% to the pets.[fn1]</p></p>
+<p>After observing this configuration for a few weeks and performing additional tweaks, we elevated the mix to 75/25 and got stuck here for several months. Many of our problems here were mere instrumentation rather than issues with our software or with Kubernetes.</p></p>
+<p>We solved this problem by changing the <code>NEW_RELIC_APP_NAME</code> variable for this deployment, allowing us to more readily separate out performance profiles between the pets and the k8s deployments. In fact, we wound up with the same software reporting as several different applications in <a href="https://newrelic.com/">New Relic</a>. Once we did this, we were able to plainly see that performance in k8s was actually much better than we'd thought, and pulled the lever to move to 100% k8s.</p></p>
+<h3><code>ingest</code> switchover</h3></p>
+<p>Moving <code>ingest</code> endpoints over was a much more arduous affair. This is our most critical traffic, the kind of business processes where our customers start blowing up our phones when things go wrong. As a result, we were much more conservative in migrating this traffic. The work here ran in parallel to the work on <code>api</code>, just at a slower pace.</p></p>
+<p>Then something unexpected happened.</p></p>
+<p>We had been talking about retiring the <code>ingest</code> hostname for quite some time and I lost track of the status of that initiative. Shortly after we reached a 50/50 mix on <code>ingest</code>, our tablet engineers shipped a version that implemented this change, and they did so in the run-up to a product launch expected to deliver significantly more traffic than we were accustomed to receiving.</p></p>
+<p>In fact, in expectation of this launch, I had placed my entire team on-call for the day. As a result, we observed this delta between expectation and reality almost instantly. The k8s horizontal pod autoscaler kicked in and drove our <code>api</code> deployment up to its upper bound almost instantly.</p></p>
+<p>We did some quick back-of-the-napkin math and wondered if we should drop <code>api</code> back to a mix with the pets, but ultimately decided to stay the course. Once the launch was over, we evaluated all available telemetry we had on the event and realized that we were safe to flip <code>ingest</code> over completely.</p></p>
+<p>We entered the weekend with the original pet servers held in reserve, with Route53 healthchecks and failover configured to redirect traffic if anything hiccups in k8s. Being in Sports and Entertainment, our highest traffic-hours are typically mid-evening on a Saturday night, and we've had a string of record breaking Saturdays recently. Data Science reported that this weekend was projected to be a little lighter than usual, so we elected to stay the course yet again.</p></p>
+<p>The 7 o'clock hour on Saturday, April 8, 2017, was not a little lighter than usual. It was our highest traffic-hour <em>ever.</em></p></p>
+<p>I posted this to Twitter the following morning before I got the full traffic results:</p></p>
 <blockquote class="twitter-tweet" data-lang="en">
 <p lang="en" dir="ltr">
-    Our first weekend being hosted 100% on <a href="https:&#47;&#47;twitter.com&#47;hashtag&#47;Kubernetes?src=hash">#Kubernetes<&#47;a> gave us a very, very pretty scale in viz. <a href="https:&#47;&#47;t.co&#47;7yMxqrdrs9">pic.twitter.com&#47;7yMxqrdrs9<&#47;a><br />
-  <&#47;p>&mdash; Jeremy Derr (@jcderr) </p>
-<p>  <a href="https:&#47;&#47;twitter.com&#47;jcderr&#47;status&#47;851083939380908033">April 9, 2017<&#47;a><br />
-<&#47;blockquote></p>
-<p><script async src="&#47;&#47;platform.twitter.com&#47;widgets.js" charset="utf-8"><&#47;script> That is, indeed, a very pretty viz. The HPA once again kicked in and took care of business. Each block you see here represents a pod started to respond to traffic.<&#47;p></p>
-<hr &#47;>
-<p>fn1: Please note that this doesn't actually load balance the incoming traffic, but rather the DNS lookups. Because we have enterprise customers, there was some risk here that one very large customer would get k8s in the lookup and the traffic pattern would have been skewed beyond expectations. To whatever degree this happened, it did not affect our operations.<&#47;p></p>
+    Our first weekend being hosted 100% on <a href="https://twitter.com/hashtag/Kubernetes?src=hash">#Kubernetes</a> gave us a very, very pretty scale in viz. <a href="https://t.co/7yMxqrdrs9">pic.twitter.com/7yMxqrdrs9</a><br />
+  </p>&mdash; Jeremy Derr (@jcderr) </p>
+<p>  <a href="https://twitter.com/jcderr/status/851083939380908033">April 9, 2017</a><br />
+</blockquote></p>
+<p><script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script> That is, indeed, a very pretty viz. The HPA once again kicked in and took care of business. Each block you see here represents a pod started to respond to traffic.</p></p>
+<hr />
+<p>fn1: Please note that this doesn't actually load balance the incoming traffic, but rather the DNS lookups. Because we have enterprise customers, there was some risk here that one very large customer would get k8s in the lookup and the traffic pattern would have been skewed beyond expectations. To whatever degree this happened, it did not affect our operations.</p></p>
