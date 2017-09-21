@@ -3,6 +3,7 @@ description: Just Me Being Me. Continuously.
 google_analytics: 
 show_downloads: false
 theme: jekyll-theme-midnight
+paginate: 5
 
 gems:
   - jekyll-mentions
