@@ -1,9 +1,15 @@
 title: Continuously Me
 description: Just Me Being Me. Continuously.
-google_analytics: 
+google_analytics:
 show_downloads: false
 theme: jekyll-theme-midnight
-paginate: 5
+paginate: 3
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: "default"
 
 plugins:
   - jekyll-mentions
