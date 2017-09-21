@@ -1,0 +1,83 @@
+---
+layout: post
+status: publish
+published: true
+title: Using Docker in Production
+author:
+  display_name: jeremy.derr
+  login: jeremy.derr
+  email: jeremy@derr.me
+  url: ''
+author_login: jeremy.derr
+author_email: jeremy@derr.me
+wordpress_id: 196
+wordpress_url: http://continuously.me/?p=196
+date: '2014-11-05 10:31:39 -0600'
+date_gmt: '2014-11-05 16:31:39 -0600'
+categories:
+- Uncategorized
+tags: []
+comments: []
+---
+<p>I aggressively switched <a href="http:&#47;&#47;djed.com">Djed Studios<&#47;a> to Docker earlier this year and couldn't be happier with the result. It has been prominently front-and-center in our culture of continuous improvement and "failing fast". Initially, I recreated the exact, pre-existing development environment into a monolithic Docker container. I then slowly evolved the workflow such that we now do everything "The Docker Way" - we have 1 service per container and build our service up atomically from there. The very same containers that we use for development are, ultimately, placed onto our production servers.<&#47;p></p>
+<h1>Python Onbuild<&#47;h1></p>
+<p>The official <a href="https:&#47;&#47;github.com&#47;docker-library&#47;python&#47;blob&#47;master&#47;2.7&#47;onbuild&#47;Dockerfile">python onbuild<&#47;a> containers proved invaluable. For a few reasons, though, I have forked them for our own purposes. You can see the base of <a href="https:&#47;&#47;github.com&#47;jcderr&#47;python">this fork on github<&#47;a>. The only notable change is that it is now based on ubuntu instead of debian.<&#47;p></p>
+<p>Our private python-onbuild containers use this change to install a handful of apt packages that are integral to our site. In keeping with the purpose of onbuild containers, I wanted this container to be everything needed to build or run our app except for the actual python environment and code.<&#47;p></p>
+<p>This gives us a really simple Dockerfile:<&#47;p></p>
+<pre><code>FROM jcderr&#47;python:2.7.8-onbuild</p>
+<p>RUN ln -s &#47;usr&#47;src&#47;app &#47;opt&#47;app; mkdir &#47;opt&#47;logs<br />
+RUN mkdir -p &#47;usr&#47;src&#47;app&#47;static &amp;&amp; python manage.py collectstatic --noinput --clear<br />
+VOLUME [ "&#47;usr&#47;src&#47;app", "&#47;var&#47;run" ]<br />
+CMD [ "python", "manage.py", "runserver", "0.0.0.0:80"]<br />
+<&#47;code><&#47;pre></p>
+<p>The 'onbuild' part of this construct is that the base image uses the <code>ONBUILD<&#47;code> declaration to grab our <code>requirements.txt<&#47;code> file and install a full python environment, and then injects our code into <code>&#47;usr&#47;src&#47;app<&#47;code>. By doing this is two stages, building the python environment can utilize Docker's build cache if <code>requirements.txt<&#47;code> hasn't changed and results in a much faster build.<&#47;p></p>
+<h1>Fig<&#47;h1></p>
+<p>Fig 1.0 was <a href="https:&#47;&#47;blog.docker.com&#47;2014&#47;10&#47;fig-1-0-boot2docker-compatibility-and-more&#47;">released<&#47;a> simultaneously with <a href="https:&#47;&#47;blog.docker.com&#47;2014&#47;10&#47;docker-1-3-signed-images-process-injection-security-options-mac-shared-directories&#47;">Docker 1.3<&#47;a>. This was a key point for us, as it allowed us to retire <a href="https:&#47;&#47;github.com&#47;jcderr&#47;soos">Soos<&#47;a>, my custom-designed shell glue for our developers' environments. I had reviewed Fig at the time and found it lacking, but the fine folks at Orchard (and at Docker, after the acquisition) have done an incredible job in rapid iteration on the concept and produced an outrageously amazing product. The plan is to integrate it fully into a future release of Docker itself and I wholeheartedly endorse this effort. Fig is that awesome.<&#47;p></p>
+<p>A shadow of Soos still persists in our project, mostly as a wrapper for common tasks in Fig, and we have two figfiles, <code>fig.yml<&#47;code> and <code>fig-production.yml<&#47;code>. By default, all <code>bin&#47;soos<&#47;code> calls use <code>fig.yml<&#47;code>, which stands up a db, redis, and a Django dev server on port 8000, with all relevant links.<&#47;p></p>
+<p>If someone calls <code>bin&#47;soos --prod [action]<&#47;code>, however, it will use the production figfile. For instance, <code>bin&#47;soos --prod up<&#47;code> will stand up a copy of the entire production stack locally, including Nginx with SSL, a celery worker, and so on.<&#47;p></p>
+<h1>Production<&#47;h1></p>
+<p>We deploy entirely within AWS with CloudFormation, and all of our instances are <a href="http:&#47;&#47;coreos.com">CoreOS<&#47;a> Stable machines. Each instance has EC2 metadata to define what environment it belongs to (prod, stage, or test) as well as its role (django, celery, etc).<&#47;p></p>
+<h2>Sharing Secrets<&#47;h2></p>
+<p>Securing and sharing secrets is one of the hard problems in operations. We chose to store these secrets in an S3 bucket and allow access via IAM profiles. Each environment has a matching environment file that defines a handful of necessary values, such as <code>DATABASE_URL<&#47;code>, in shell syntax.<&#47;p></p>
+<h2>systemd<&#47;h2></p>
+<p>systemd isn't for everyone, but it's the init system in CoreOS, it gets the job done, and it solves my specific problems quite well, so I've embraced it wholeheartedly in our stack. We have global units that target all units that match specific metadata (eg. 'role=django', 'role=celery').<&#47;p></p>
+<p>I abuse subshells pretty aggressively, though. One of our units is a fork of the CoreOS team's example ELB Presence Notifier, altered to use IAM profiles instead of requiring access keys in the environment.<&#47;p></p>
+<pre><code>[Unit]<br />
+Description=ELB Presence Notifier<br />
+After=http.service<br />
+BindsTo=http.service</p>
+<p>[Service]<br />
+User=core<br />
+TimeoutStartSec=0<br />
+ExecStartPre=-&#47;usr&#47;bin&#47;docker stop elb-presence<br />
+ExecStartPre=-&#47;usr&#47;bin&#47;docker rm elb-presence<br />
+ExecStartPre=&#47;usr&#47;bin&#47;docker pull jcderr&#47;s3fetch<br />
+ExecStartPre=-&#47;usr&#47;bin&#47;docker run --rm -v &#47;home&#47;core:&#47;root jcderr&#47;s3fetch python &#47;opt&#47;app&#47;s3fetch.py ************* .docker.cfg &#47;root&#47;.dockercfg<br />
+ExecStartPre=-&#47;bin&#47;sh -c '&#47;usr&#47;bin&#47;docker run --rm -v &#47;home&#47;core:&#47;root jcderr&#47;s3fetch python &#47;opt&#47;app&#47;s3fetch.py ************* $(&#47;usr&#47;bin&#47;etcdctl get &#47;djed-environment) &#47;root&#47;$(&#47;usr&#47;bin&#47;etcdctl get &#47;djed-environment)'<br />
+ExecStartPre=&#47;usr&#47;bin&#47;docker pull djedstudios&#47;elb-presence<br />
+ExecStart=&#47;bin&#47;sh -c '&#47;usr&#47;bin&#47;docker run --name elb-presence --env-file=&#47;home&#47;core&#47;$(&#47;usr&#47;bin&#47;etcdctl get &#47;djed-environment) djedstudios&#47;elb-presence'<br />
+ExecStop=&#47;usr&#47;bin&#47;docker stop elb-presence</p>
+<p>[X-Fleet]<br />
+Global=true<br />
+MachineMetadata="role=django"<br />
+<&#47;code><&#47;pre></p>
+<p>This service adds the instance to an AWS Elastic Load Balancer and, when the linked <code>http.service<&#47;code> process dies, remove it again. Process termination is low hanging fruit. There's no point in waiting for the AWS health checker to take its time removing the instance if we know the process isn't even running.<&#47;p></p>
+<p>As you can see, I have a key I fetch out of <code>etcd<&#47;code> to make this work. <code>djed-environment<&#47;code> holds the full path to the environment file we fetched from S3. Other units also rely on <code>djed-version<&#47;code>, which will be the tag name for the docker container that should be run.<&#47;p></p>
+<p>With similarly constructed systemd units, I stand up the service like this:<&#47;p></p>
+<ul>
+<li>Fetch the app container<&#47;li>
+<li>Run a copy of the app to serve the website<&#47;li>
+<li>Run another copy to serve the API<&#47;li>
+<li>Both run <code>uwsgi<&#47;code> on a Unix socket<&#47;li>
+<li>Fetch and run the nginx container<&#47;li>
+<li>Nginx picks up the app and API sockets as upstreams<&#47;li>
+<li>Fetch and run the presence notifier<&#47;li><br />
+<&#47;ul></p>
+<p>We're a Django shop. The only difference between the <code>app<&#47;code> container and the <code>api<&#47;code> container is that we pass in a different <code>DJANGO_SETTINGS_MODULE<&#47;code> to the <code>api<&#47;code> container.<&#47;p></p>
+<h1>Deploying Updates<&#47;h1></p>
+<p>To deploy a new version of the code, I simply update the etcd key <code>&#47;djed-version<&#47;code>. We have a self-healing&#47;self-updating service called Norm that watches this key and, upon a change, begins the update process.<&#47;p></p>
+<h2>Norm<&#47;h2></p>
+<p>Norm is a short bash script that has two modes of operation: maintenance and update.<&#47;p></p>
+<p>In Maintenance Mode, Norm watches the <code>fleet<&#47;code> service to make sure that all systemd units in the stack are healthy. If they fail, it works through a regimen of stopping, unloading, and then relaunching said services.<&#47;p></p>
+<p>In Update mode, one machine is chosen at random to be the 'responsible adult' and the others are instructed to pull the targeted version of the container (as defined by the <code>&#47;djed-version<&#47;code> key). Once each machine concludes the download, they inform the responsible adult by updating a key that includes their machine ID. Once the entire fleet has the new container, the responsible adult stops the service, performs all maintenance required in the upgrade (eg. database migrations, static file generation), and then brings the service back up.<&#47;p></p>
+<p>In the near future, we'll be moving to a database migration scheme that will allow this update to take place without downtime, but we're not quite there yet.<&#47;p></p>

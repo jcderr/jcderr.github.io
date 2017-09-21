@@ -1,0 +1,46 @@
+---
+layout: post
+status: publish
+published: true
+title: A Docker Workloads Stack, End to End
+author:
+  display_name: jeremy.derr
+  login: jeremy.derr
+  email: jeremy@derr.me
+  url: ''
+author_login: jeremy.derr
+author_email: jeremy@derr.me
+wordpress_id: 227
+wordpress_url: http://continuously.me/?p=227
+date: '2015-02-26 17:10:01 -0600'
+date_gmt: '2015-02-26 23:10:01 -0600'
+categories:
+- Uncategorized
+tags: []
+comments: []
+---
+<p>We run a lot of background tasks where we don't necessarily care where the code actually runs: it needs to have Internet access and access to a couple of S3 buckets, and that's about it. Some of the jobs are appropriate for Hadoop and Spark, which we crank out through AWS ElasticMapReduce, but some is more nuanced.<&#47;p></p>
+<h1>etcd Backed<&#47;h1></p>
+<p>To begin with, we back everything with etcd. We use <a href="https:&#47;&#47;github.com&#47;jcderr&#47;coreos-vulcand-shipyard&#47;blob&#47;master&#47;cloudformation&#47;devops-etcd.json">this CloudFormation<&#47;a> to bootstrap an etcd cluster according to the CoreOS team's recommendation for production workloads. We only run etcd on these machines, everyone else just looks to them for configuration data, and these machines do not run any other services.<&#47;p></p>
+<h1>Operations Tier<&#47;h1></p>
+<p>The operations tier of our stack provides essential services to the cluster: a Docker registry, <a href="http:&#47;&#47;shipyard-project.com">Shipyard<&#47;a>, and the <a href="http:&#47;&#47;vulcanproxy.com">Vulcand proxy<&#47;a>. CloudFormation is used to load <a href="https:&#47;&#47;github.com&#47;jcderr&#47;coreos-vulcand-shipyard&#47;blob&#47;master&#47;cloudformation&#47;devops-service.json">this cluster<&#47;a>, after which we load <a href="https:&#47;&#47;github.com&#47;jcderr&#47;coreos-vulcand-shipyard&#47;tree&#47;master&#47;units">fleet units<&#47;a> to provide those services.<&#47;p></p>
+<p>Vulcand's documentation is lackluster, to say the least. While the docs give examples of how to set up your front and back ends with etcdctl, I've found that for some operations, you're best using either the REST API or <code>vctl<&#47;code>. The Docker registry runs on its host on port 5000 and Shipyard on 8080.<&#47;p></p>
+<p>I set up a hostname for the vulcand host, <code>vulcan.int.derr.me<&#47;code>, and then set up <code>registry.int.derr.me<&#47;code> and <code>shipyard.into.derr.me<&#47;code> as CNAMEs.<&#47;p></p>
+<pre><code># ssh to the machine running vulcand, and then enter the vulcan1 container.<br />
+$ fleetctl ssh -A -unit=vulcand.service<br />
+coreos-host$ docker exec -ti vulcan1 bash<br />
+# setup backends<br />
+vulcan1$ vctl backend upsert -id registry<br />
+vulcan1$ vctl backend upsert -id shipyard<br />
+# setup servers behind those backends<br />
+vulcan1$ vctl server upsert -b registry -id registry1 -url http:&#47;&#47;<<registry host IP>>:5000<br />
+vulcan1$ vctl server upsert -b shipyard -id shipyard1 -url http:&#47;&#47;<<shipyard host IP>>:8080<br />
+# setup frontends for each<br />
+vulcan1$ vctl frontend upsert -id registry -b registry -route 'Host(`registry.int.derr.me`) &amp;&amp; PathRegexp(`.*`)'<br />
+vulcan1$ vctl frontend upsert -id shipyard -b shipyard -route 'Host(`shipyard.int.derr.me`) &amp;&amp; PathRegexp(`.*`)'<br />
+<&#47;code><&#47;pre></p>
+<p>Incoming requests are handled by the matching front end. It fields the request to the attached backend, which is served by one or more servers. If we ever decide we're pulling enough docker images that we should add another Docker server, we would simply add a second server.<&#47;p></p>
+<pre><code>vulcan1$ vctl server upsert -b registry -id registry2 -url http:&#47;&#47;<<registry2 host IP>>:5000<br />
+<&#47;code><&#47;pre></p>
+<h1>Docker Tier<&#47;h1></p>
+<p>All other hosts in the cluster are just dumb CoreOS machines running Docker, hooked up to Shipyard.<&#47;p></p>

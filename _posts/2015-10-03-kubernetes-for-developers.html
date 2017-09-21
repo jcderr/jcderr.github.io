@@ -1,0 +1,48 @@
+---
+layout: post
+status: publish
+published: true
+title: Kubernetes for Developers. No, Really.
+author:
+  display_name: jeremy.derr
+  login: jeremy.derr
+  email: jeremy@derr.me
+  url: ''
+author_login: jeremy.derr
+author_email: jeremy@derr.me
+wordpress_id: 233
+wordpress_url: http://continuously.me/?p=233
+date: '2015-10-03 22:09:15 -0500'
+date_gmt: '2015-10-04 03:09:15 -0500'
+categories:
+- Uncategorized
+tags: []
+comments: []
+---
+<p>I've transitioned a lot of my production workload into a <a href="kubernetes.io">kubernetes<&#47;a> cluster, and we're shortly going to begin moving over some of our product too. I've been using fairly vanilla <a href="http:&#47;&#47;docker.com">Docker<&#47;a> for some of my local development toolset, though.<&#47;p></p>
+<p>Once upon a time, I ran postgresql natively on my Mac, first by installing the official packages and later with <code>brew install postgresql<&#47;code>. Later, I started running my local postgresql in a Docker container. The same was roughly true for all of my other requirements, such as memcached or redis or rabbitmq.<&#47;p></p>
+<p>If I just <code>docker run ...<&#47;code> these prerequisites, I now have to make sure they're still running at any given point in time. While moving to Docker brings me a tremendous ease-of-provisioning that I cannot ignore, this aspect is a regression; no longer can I use something like launchd to keep the service running if it fails. I could, and have, used <code>docker-compose<&#47;code> to create services in each project that provide the necessary software, but this has often lead me to running two or three copies of, say, postgresql at a time, if I don't remember to shut them down when I'm done.<&#47;p></p>
+<p>And really, that's more than a little overkill. My local databases aren't performance tweaked. They aren't (generally) set up with any custom configuration, and to whatever degree they are, they're fairly generic tweaks that I apply to all of my databases. For dev, all that really matters is that I happen to have a postgres process running and the software has access to it. Why run three copies?<&#47;p></p>
+<p>A few assumptions I make:<&#47;p></p>
+<ul>
+<li>I prefer my VM to be at <code>172.31.255.254<&#47;code>, as this private subnet is practically never used. By anyone. Ever.<&#47;li>
+<li><code>~&#47;src<&#47;code> is shared into the VM at <code>~core&#47;src<&#47;code> and, thus, available to containers with the <code>-v<&#47;code> flag.<&#47;li>
+<li>Kubernetes services are NodePorts. I replace the thousands digit with <code>30<&#47;code>; that is, the standard postgres <code>5432<&#47;code> port is comes out on <code>30432<&#47;code>.<&#47;li><br />
+<&#47;ul></p>
+<h1>Vagrantfile<&#47;h1></p>
+<p>My <code>Vagrantfile<&#47;code> is based off of <a href="https:&#47;&#47;github.com&#47;jimbojsb&#47;docker-vm&#47;">a great setup<&#47;a> by <a href="http:&#47;&#47;twitter.com&#47;jimbojsb">Josh Butts<&#47;a> over at <a href="http:&#47;&#47;offers.com&#47;">offers.com<&#47;a>. I added setup for etcd, fleet, and flannel, and added the units for all of the kubernetes components. You can find my setup <a href="https:&#47;&#47;github.com&#47;jcderr&#47;docker-kube-vm">here<&#47;a>. <code>vagrant up<&#47;code> and you're good to go. From Josh's setup, you can expose your services to the world by adding ports to the <code>services<&#47;code> file.<&#47;p></p>
+<h1>Kubes<&#47;h1></p>
+<p>The four most common services I use are mysql, postgresql, rabbitmq, and redis. Since I don't apply any tweaks on my dev box, I'm using the generic, official Docker images.<&#47;p></p>
+<pre><code>$ kubectl create -f <service>&#47;rc.yaml<br />
+$ kubectl create -f <service>&#47;service.yaml<br />
+<&#47;code><&#47;pre></p>
+<p>The services store their state in <code>&#47;home&#47;core&#47;data&#47;<service><&#47;code>. If I wind up with data I need, this is what I back up. You might be tempted to share this back out, but POSIX does stupid things sometimes and, chiefly, I've found it really messes with postgresql.<&#47;p></p>
+<p>My example kubes are <a href="https:&#47;&#47;github.com&#47;jcderr&#47;kubes">here<&#47;a>.<&#47;p></p>
+<h1>Docker<&#47;h1></p>
+<p>Because this is based on Josh's setup, Docker is exposed outside the VM and I can use <code>docker run ...<&#47;code> and other commands locally on my Mac with the correct environment, without necessarily having to rely on kubernetes.<&#47;p></p>
+<pre><code>$ export DOCKER_HOST=tcp:&#47;&#47;172.31.255.254:2375<br />
+$ docker run ...<br />
+    or<br />
+$ docker-compose up<br />
+<&#47;code><&#47;pre></p>
+<p>Generally, I use <code>docker-compose<&#47;code> while developing, then test it by running it in my local kubelet before pushing it out to our production kubelets.<&#47;p></p>

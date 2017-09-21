@@ -1,0 +1,27 @@
+---
+layout: post
+status: publish
+published: true
+title: CoreOS Paves a New Containerized Path
+author:
+  display_name: jeremy.derr
+  login: jeremy.derr
+  email: jeremy@derr.me
+  url: ''
+author_login: jeremy.derr
+author_email: jeremy@derr.me
+wordpress_id: 210
+wordpress_url: http://continuously.me/?p=210
+date: '2014-12-01 12:43:44 -0600'
+date_gmt: '2014-12-01 18:43:44 -0600'
+categories:
+- Uncategorized
+tags: []
+comments: []
+---
+<p>The CoreOS team today <a href="https:&#47;&#47;coreos.com&#47;blog&#47;rocket&#47;">announced the first release of Rocket<&#47;a>. As I've clearly gone swimming in the Docker Kool-aid, I've also <a href="https:&#47;&#47;continuously.me&#47;2014&#47;11&#47;05&#47;using-docker-in-production&#47;">knocked back a goodly amount<&#47;a> of CoreOS's as well.<&#47;p></p>
+<p>As I read above-linked blog post from the CoreOS team, I found myself agreeing with them more than I expected to. I'm a big fan of <a href="http:&#47;&#47;www.fig.sh">Fig<&#47;a>, am quite pleased that Orchard was acquired by Docker and that development will continue, but the news that <a href="https:&#47;&#47;blog.docker.com&#47;2014&#47;10&#47;fig-1-0-boot2docker-compatibility-and-more&#47;">fig would henceforth be built in to Docker itself<&#47;a> was a little troubling.<&#47;p></p>
+<p>The common Unix-ism is to "do one thing and do it well." In fact, the entire idea behind containers is that they should <em>do one thing, and do it well.<&#47;em> Our production stack has one specific container that runs our app, another that runs nginx, and one last one that handles service discovery. Each container does one thing. Hopefully, it does it well. When it does not, I just have to investigate that one container.<&#47;p></p>
+<p>Docker is diverging from that maxim. <code>&#47;usr&#47;bin&#47;docker<&#47;code> is your client for interacting with the Docker Hub. It's your tool for managing running containers. It's your tool for managing your local library of images. It's your tool for building new images. Soon, it will be your tool managing entire stacks of containers monolithically and your tool for deploying to production.<&#47;p></p>
+<p>Some of those can arguably be considered part of one same thing that it is doing well, but the path is clearly charted in the other direction. Rocket is designed to counter this an offer an alternative, swinging the pendulum back towards the Way of Unix.<&#47;p></p>
+<p>I feel like perhaps I'm starting to swing towards being more beholden to CoreOS than specifically to Docker itself.<&#47;p></p>

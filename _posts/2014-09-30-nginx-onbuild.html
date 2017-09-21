@@ -1,0 +1,34 @@
+---
+layout: post
+status: publish
+published: true
+title: Nginx ONBUILD FTW
+author:
+  display_name: jeremy.derr
+  login: jeremy.derr
+  email: jeremy@derr.me
+  url: ''
+author_login: jeremy.derr
+author_email: jeremy@derr.me
+wordpress_id: 187
+wordpress_url: http://continuously.me/?p=187
+date: '2014-09-30 11:51:22 -0500'
+date_gmt: '2014-09-30 16:51:22 -0500'
+categories:
+- Uncategorized
+tags: []
+comments: []
+---
+<p>I needed a lightweight nginx setup that I just throw config files into, thus was born <a href="https:&#47;&#47;github.com&#47;jcderr&#47;docker-nginx-onbuild">docker-nginx-onbuild<&#47;a>. The base container will add any files in the context to <code>&#47;etc&#47;nginx<&#47;code> and your <code>CMD<&#47;code> need only be arguments to <code>nginx<&#47;code>.<&#47;p></p>
+<p>To build our nginx container here at <a href="http:&#47;&#47;djed.com">Djed<&#47;a>, my docker context has a few files:<&#47;p></p>
+<ul>
+<li>conf.d&#47;site.conf<&#47;li>
+<li>ssl&#47;certificate.crt<&#47;li>
+<li>ssl&#47;certificate.key<&#47;li><br />
+<&#47;ul></p>
+<p>My <code>Dockerfile<&#47;code> is very simple and looks like this:<&#47;p></p>
+<pre><code>FROM jcderr&#47;nginx-onbuild:latest<br />
+MAINTAINER Jeremy Derr my@email<br />
+CMD [ "-g", "daemon off;" ]<br />
+<&#47;code><&#47;pre></p>
+<p><code>site.conf<&#47;code> defines my upstreams (which are sockets exported by other containers) and my hosts, and that's about it.<&#47;p></p>

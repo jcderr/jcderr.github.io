@@ -1,0 +1,52 @@
+---
+layout: post
+status: publish
+published: true
+title: Using Vault to Secure Etcd, Kubernetes
+author:
+  display_name: jeremy.derr
+  login: jeremy.derr
+  email: jeremy@derr.me
+  url: ''
+author_login: jeremy.derr
+author_email: jeremy@derr.me
+wordpress_id: 270
+wordpress_url: http://continuously.me/?p=270
+date: '2016-09-10 09:59:07 -0500'
+date_gmt: '2016-09-10 14:59:07 -0500'
+categories:
+- Uncategorized
+tags: []
+comments: []
+---
+<p>The amazing folks over at <a href="http:&#47;&#47;digitalocean.com">DigitalOcean<&#47;a> recently posted a blog article detailing their usage of <a href="https:&#47;&#47;www.digitalocean.com&#47;company&#47;blog&#47;vault-and-kubernetes&#47;">Vault as a Certificate Authority for Kubernetes<&#47;a>. I had previously been struggling for how and why to use <a href="https:&#47;&#47;www.vaultproject.io&#47;">Vault<&#47;a> in my infrastructure, in part because I hadn't taken the time to get my head around Vault's metaphors. This article pushed me over the edge and imparted comprehension upon me.<&#47;p></p>
+<p>The only problem is that it's woefully short on actual implementation details.<&#47;p></p>
+<h1>Infrastructure Allergy<&#47;h1></p>
+<p>I have a well-established allergy to infrastructure. I take the view that any added infrastructure must, in all circumstances, not introduce any more administration or training than the original problem presented. This is very often an insurmountable obstacle to adoption, and this is by design. If you're implementing highly available, redundant Chef infrastructure, you're often just dancing around the problem of distributing shell scripts, and just trading one administrivia chore for another. To get me to implement new infrastructure, you have to buy me something incredible.<&#47;p></p>
+<p>Implementing Vault required I commit to two new pieces of infrastructure: Vault and its Consul backend. That's steep, in my book, and it's been incredibly well worth it. I run CoreOS almost exclusively, so running these in Docker on a spare instance was practically trivial. My Consul installation is not (yet) highly available, but that's a problem for another day.<&#47;p></p>
+<h2>Overcoming the Allergy<&#47;h2></p>
+<p>Certificate Authorities are hard. My present deployment routine for CoreOS and Kubernetes involves an EC2 AMI that has the CA's private key baked in. On boot, the instance uses this CA to generate and sign its own TLS certificates, then deletes the CA's private key. This works, but has a narrow threat vector in that the incredibly-sensitive CA private key might remain on the filesystem if the boot process fails. Key rotation and certificate revocation are also practically impossible. I accepted this trade-off, expecting to implement a proper CA in the future, in the interests of pushing forward Kubernetes adoption as a priority.<&#47;p></p>
+<p>With Vault, I need only distribute a Vault token. I don't even need to bake it into the AMI, but instead provide it via cloud-init, which is itself computed by AWS CloudFormation. If I need to revoke this token, I need only update a parameter in CloudFormation and my cattle are replaced quickly with instances bearing the new token.<&#47;p></p>
+<p>The final piece is that the two tools necessary to fetch certificates are included in CoreOS, despite its lack of LSB userland. All I need are <code>curl<&#47;code> and <code>jq<&#47;code>.<&#47;p></p>
+<pre><code>curl -H 'X-Vault-Token: some-token-here' \<br />
+    -d '{"common_name": "some.hostname", "ip_san": "10.10.10.10"}' \<br />
+    https:&#47;&#47;vault.server&#47;etcd&#47;somecluster&#47;pki&#47;issue&#47;member | jq -r \<br />
+        .data.certificate > &#47;etc&#47;kubernetes&#47;ssl&#47;server.crt<br />
+<&#47;code><&#47;pre></p>
+<p>This is <em>incredibly powerful<&#47;em> and genuinely worthy of taking my allergy shots. And it's why I say I'm allergic to infrastructure. DigitalOcean uses Consul templates plugins to install these certificates, but as they point out:<&#47;p></p>
+<blockquote>
+<p>Because consul-template will only write one file per template and we needed to split our certificate into its components (certificate, private key, and issuing certificate), we wrote a custom plugin that takes in the data, a file path, and an file owner.<&#47;p><br />
+<&#47;blockquote></p>
+<p>There's no need for that. <code>curl<&#47;code> and <code>jq<&#47;code> do the job just fine.<&#47;p></p>
+<h1>Proper Namespacing<&#47;h1></p>
+<p>My first change from the article was to namespace my Vault endpoints a little differently. DO uses <code>$CLUSTER_ID&#47;pki&#47;$COMPONENT<&#47;code> which I find a little confusing. I prefer to go with <code>product&#47;identifier&#47;function<&#47;code> - so for my etcd cluster, I go with <code>etcd&#47;$CLUSTER_ID&#47;pki<&#47;code>, for kubernetes it's <code>k8s&#47;$CLUSTER_ID&#47;pki<&#47;code>. I explicitly choose to end with <code>pki&#47;<&#47;code> because this makes it clear that this endpoint is the entrypoint for the Vault <code>pki<&#47;code> backend; everything from this point is Vault's doing.<&#47;p></p>
+<h1>Reconfiguring Etcd<&#47;h1></p>
+<p>I had existing, unsecured and unauthenticated etcd clusters backing my Kubernetes clusters. While these clusters are managed with CloudFormation and cloud-init to be highly available and replaceable, the data they serve is critically important and cannot be lost. As a result, I began by doing something I rarely do: upgrading the existing servers in-place.<&#47;p></p>
+<p>Luckily, the etcd documentation <a href="https:&#47;&#47;coreos.com&#47;etcd&#47;docs&#47;latest&#47;etcd-live-http-to-https-migration.html">covers this very topic<&#47;a>. On each machine, I ran the <code>curl<&#47;code> above to generate certificates, then followed the etcd documentation pretty much to the letter.<&#47;p></p>
+<p>I'll note that the biggest problem I had was that the etcd nodes talk to one another directly, but external connections arrive at the nodes through an AWS Elastic Load Balancer. As a result, it is imperative that you set both the common name and the IP SAN on your certificates.<&#47;p></p>
+<h1>Reconfiguring k8s apiserver<&#47;h1></p>
+<p>The Kubernetes API server is a little more tricky, as you need to generate two sets of certificates: one to secure its connection to the etcd cluster, and another to secure its connection to the other kubernetes components. Additionally, we never did (and still will not) connect kubernetes directly to the etcd cluster; instead, we'll configure the local etcd daemon to run in proxy mode, secure its connection upstream, and then have apiserver talk to etcd proxy over localhost. All of this is also covered in the etcd doc above.<&#47;p></p>
+<h1>Reconfiguring k8s kubelets<&#47;h1></p>
+<p>While they don't outright say this, I don't believe DigitalOcean is using flanneld for their proxy layer. I gather this because they claim that their kubelets aren't configured at all to talk to etcd, but flanneld requires this. I had to repeat the above configuration on the kubelets so that flanneld would work.<&#47;p></p>
+<h1>Configuring kubectl<&#47;h1></p>
+<p>This is the most beautiful thing to me. Previously, I was using my copy of the CA above to generate certificates for all of my users. No more. I just point them to Vault and say "Have at it, mate."<&#47;p></p>

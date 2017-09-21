@@ -1,0 +1,42 @@
+---
+layout: post
+status: publish
+published: true
+title: Git Protocol Behavior Change At Github.com
+author:
+  display_name: jeremy.derr
+  login: jeremy.derr
+  email: jeremy@derr.me
+  url: ''
+author_login: jeremy.derr
+author_email: jeremy@derr.me
+wordpress_id: 250
+wordpress_url: http://continuously.me/?p=250
+date: '2016-07-22 10:20:51 -0500'
+date_gmt: '2016-07-22 15:20:51 -0500'
+categories:
+- Uncategorized
+tags: []
+comments: []
+---
+<p>We recently saw practically all of our CI tests begin failing if certain tasks attempted to pull private repositories from Github. Specifically, if our Ruby Gemfiles or Go dependencies referenced private repositories, builds would fail with authentication failures.<&#47;p></p>
+<p>These errors generally look like this when running <code>bundle install<&#47;code> for our project:<&#47;p></p>
+<pre><code>Fetching git:&#47;&#47;github.com&#47;redacted-org&#47;redacted-repo.git<br />
+fatal: remote error:<br />
+  Repository not found.<br />
+Retrying git clone 'git:&#47;&#47;github.com&#47;redacted-org&#47;redacted-repo.git' "&#47;var&#47;lib&#47;gems&#47;2.1.0&#47;cache&#47;bundler&#47;git&#47;redacted-repo-401a...807f" --bare --no-hardlinks --quiet due to error (2&#47;4): Bundler::Source::Git::GitCommandError Git error: command `git clone 'git:&#47;&#47;github.com&#47;redacted-org&#47;redacted-repo.git' "&#47;var&#47;lib&#47;gems&#47;2.1.0&#47;cache&#47;bundler&#47;git&#47;redacted-repo-401a...807f" --bare --no-hardlinks --quiet` in directory &#47;tmp has failed.<br />
+fatal: remote error:<br />
+  Repository not found.<br />
+<&#47;code><&#47;pre></p>
+<p>A similar error occurred building a Go project.<&#47;p></p>
+<p>The commonality here is that Bundler and godep both recorded the dependencies' Github URLs as Git protocol. It should be noted that the Git protocol (<code>git:&#47;&#47;<&#47;code>) is unauthenticated and is a pull-only protocol from Github.<&#47;p></p>
+<p>Previously, however, these URLs did actually work for authenticated pulls. We were pulling authenticated repositories as late as the evening of July 20, 2016. With no changes to our Ruby environment, our git client, Dockerfile, Gemfile, or Gemfile.lock, these Bundler installs began failing with this error on the 21st.<&#47;p></p>
+<p>As a result of this, we engaged in a vicious search-and-destroy to add the following line to all of our build scripts and Dockerfiles:<&#47;p></p>
+<p><code>git config --global url."git@github.com:".insteadOf "git:&#47;&#47;github.com&#47;"<&#47;code><&#47;p></p>
+<p>My working assumption is that, when presented with an attempt to pull a private repository over the Git protocol, Github was silently transforming these pulls into SSH protocol pulls. Sometime overnight between July 20 and July 21, they stopped performing this redirect.<&#47;p></p>
+<p>[Update 2016&#47;07&#47;25]: Stacey @ Github Support responded with the following:<&#47;p></p>
+<blockquote>
+<p>We did implement a change recently that corrected our logic to adhere to the correct git protocol.<&#47;p></p>
+<p>This means URLs must start with git@github.com.<&#47;p><br />
+<&#47;blockquote></p>
+<p>Thanks for confirming the change, Stacey.<&#47;p></p>
